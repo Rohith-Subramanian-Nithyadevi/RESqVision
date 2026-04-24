@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # 1. Database Layer
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: always
+
+  # 2. Backend Layer
+  backend:
+    build: ./backend-layer
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - TWILIO_SID=${TWILIO_SID}
+      - TWILIO_TOKEN=${TWILIO_TOKEN}
+      - TWILIO_PHONE=${TWILIO_PHONE}
+      - SENDGRID_KEY=${SENDGRID_KEY}
+      - FROM_EMAIL=${FROM_EMAIL}
+      - WIPE_DB_ON_START=${WIPE_DB_ON_START:-false}
+    depends_on:
+      - mongo
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
+  # 3. AI / Detection Layer
+  ai-layer:
+    build:
+      context: ./ai-layer
+    # network: host  <-- REMOVED: Incompatible with Windows/Mac Docker
+    ports:
+      - "5000:5000"
+    dns:
+      - 8.8.8.8
+    environment:
+      - WEBSOCKET_URL=ws://backend:8000/ws/ai
+    depends_on:
+      - backend
+    restart: always
+    volumes:
+      - ./ai-layer/test_video.mp4:/app/test_video.mp4
+
+  # 4. Frontend Layer
+  frontend:
+    build: ./frontend-layer
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_WS_URL=ws://localhost:8000/ws/frontend
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  mongo_data:
