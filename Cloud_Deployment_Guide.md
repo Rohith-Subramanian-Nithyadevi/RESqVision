@@ -38,14 +38,16 @@ git push -u origin main
     *   `VITE_WS_URL`: Set this to `wss://your-backend-name.onrender.com/ws/frontend`
     *   `VITE_AI_URL`: If your AI layer runs locally, you can use `http://localhost:5000` (works if you browse from the same PC) or use an `ngrok` tunnel for remote access.
 
-## 4. AI Layer (Processing)
-The `ai-layer` scans for cameras on your local network. It is recommended to **run this layer locally** on the computer that has access to your cameras:
-```bash
-cd ai-layer
-python main.py
-```
-If you want the cloud-hosted frontend to talk to your local AI from anywhere, use **ngrok**:
-```bash
-ngrok http 5000
-```
-Then update the `VITE_AI_URL` in Vercel to your ngrok URL.
+## 4. Distributing the AI Layer to Users
+You have chosen a **Local-AI / Cloud-UI Architecture**. 
+This means you host the Frontend and Backend on Vercel/Render, but your users run the AI on their own PCs.
+
+1. **Package the AI Layer**: 
+   Zip the entire `ai-layer` folder (including the heavy `.pt` files and the new `install_and_run.bat`).
+2. **Host the ZIP**: 
+   Upload `RESqVision_Installer.zip` to your Vercel `public` folder, or Google Drive, and link it to your Landing Page's Download button.
+3. **User Flow**:
+   - The user visits your Vercel website and registers an account.
+   - The user downloads and unzips the `ai-layer`.
+   - They double-click `install_and_run.bat`. It will automatically install Python dependencies and start the AI engine.
+   - The AI engine will connect to your cloud Backend via `VITE_WS_URL` and send its alerts bound exclusively to their User ID!

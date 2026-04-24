@@ -3,7 +3,7 @@ import { Settings, Trash2, Edit2, Phone, Mail, AlertCircle, MapPin } from 'lucid
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-export default function ConfigurationPage({ onBack }) {
+export default function ConfigurationPage({ userId, onBack }) {
     const [savedConfigs, setSavedConfigs] = useState([]);
     const [detectionType, setDetectionType] = useState('');
     const [isEnabled, setIsEnabled] = useState(true);
@@ -19,7 +19,7 @@ export default function ConfigurationPage({ onBack }) {
 
     const fetchConfigs = async () => {
         try {
-            const res = await fetch(`${API_BASE}/api/config`);
+            const res = await fetch(`${API_BASE}/api/config?user_id=${userId}`);
             const data = await res.json();
             setSavedConfigs(data);
         } catch (err) {
@@ -87,6 +87,7 @@ export default function ConfigurationPage({ onBack }) {
             detection_type: String(detectionType).trim(),
             enabled: Boolean(isEnabled),
             location_address: String(locationAddress).trim(), // INCLUDED IN PAYLOAD
+            user_id: userId,
             escalations: Boolean(isEnabled) ? formattedEscalations : []
         };
 
@@ -106,7 +107,7 @@ export default function ConfigurationPage({ onBack }) {
     const handleDelete = async (type) => {
         if (!window.confirm(`Delete configuration for ${type}?`)) return;
         try {
-            await fetch(`${API_BASE}/api/config/${type}`, { method: 'DELETE' });
+            await fetch(`${API_BASE}/api/config/${type}?user_id=${userId}`, { method: 'DELETE' });
             fetchConfigs();
         } catch (err) {
             alert("Error deleting config");

@@ -33,7 +33,7 @@ db = mongo_client.sos_database
 alerts_collection = db.alerts
 config_collection = db.configurations
 
-connected_clients: set[WebSocket] = set()
+connected_clients: dict[WebSocket, str] = {}
 clients_lock = asyncio.Lock()
 
 def send_sms(to_phone, message):
@@ -142,6 +142,7 @@ async def ai_websocket_endpoint(websocket: WebSocket):
 
                                 doc = {
                                     "event_id": event_id,
+                                    "user_id": json_payload.get("user_id", "unknown"),
                                     "camera_id": camera_ip,
                                     "class_name": class_name,
                                     "confidence": det["confidence"],
@@ -167,29 +168,33 @@ async def ai_websocket_endpoint(websocket: WebSocket):
 
             modified_data = json.dumps(json_payload)
 
+            active_user_id = json_payload.get("user_id")
+            
             async with clients_lock:
-                snapshot = list(connected_clients)
+                snapshot = list(connected_clients.items())
 
             dead_clients = []
-            for client in snapshot:
-                try:
-                    await client.send_text(modified_data)
-                except Exception:
-                    dead_clients.append(client)
+            for client, c_user_id in snapshot:
+                if c_user_id == active_user_id or not active_user_id:
+                    try:
+                        await client.send_text(modified_data)
+                    except Exception:
+                        dead_clients.append(client)
 
             if dead_clients:
                 async with clients_lock:
                     for client in dead_clients:
-                        connected_clients.discard(client)
+                        if client in connected_clients:
+                            del connected_clients[client]
 
     except WebSocketDisconnect:
         pass
 
 @app.websocket("/ws/frontend")
-async def frontend_websocket_endpoint(websocket: WebSocket):
+async def frontend_websocket_endpoint(websocket: WebSocket, user_id: str = None):
     await websocket.accept()
     async with clients_lock:
-        connected_clients.add(websocket)
+        connected_clients[websocket] = user_id
     try:
         while True:
             data = await websocket.receive_text()
@@ -201,12 +206,14 @@ async def frontend_websocket_endpoint(websocket: WebSocket):
                 )
     except WebSocketDisconnect:
         async with clients_lock:
-            connected_clients.discard(websocket)
+            if websocket in connected_clients:
+                del connected_clients[websocket]
 
 @app.get("/api/config")
-async def get_configs():
+async def get_configs(user_id: str = None):
     configs = []
-    async for doc in config_collection.find():
+    query = {"user_id": user_id} if user_id else {}
+    async for doc in config_collection.find(query):
         doc["_id"] = str(doc["_id"])
         configs.append(doc)
     return configs
@@ -214,22 +221,26 @@ async def get_configs():
 @app.post("/api/config")
 async def save_config(config: dict):
     detection_type = config.get("detection_type")
+    user_id = config.get("user_id")
     await config_collection.update_one(
-        {"detection_type": detection_type},
+        {"detection_type": detection_type, "user_id": user_id},
         {"$set": config},
         upsert=True
     )
     return {"status": "success"}
 
 @app.delete("/api/config/{detection_type}")
-async def delete_config(detection_type: str):
-    await config_collection.delete_one({"detection_type": detection_type})
+async def delete_config(detection_type: str, user_id: str = None):
+    query = {"detection_type": detection_type}
+    if user_id: query["user_id"] = user_id
+    await config_collection.delete_one(query)
     return {"status": "success"}
 
 @app.get("/api/history")
-async def get_sos_history():
+async def get_sos_history(user_id: str = None):
     incidents = []
-    async for doc in alerts_collection.find().sort("created_at", -1):
+    query = {"user_id": user_id} if user_id else {}
+    async for doc in alerts_collection.find(query).sort("created_at", -1):
         doc["_id"] = str(doc["_id"])
         if isinstance(doc.get("created_at"), datetime):
             doc["created_at"] = doc["created_at"].isoformat()

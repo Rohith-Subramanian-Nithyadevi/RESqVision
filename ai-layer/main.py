@@ -25,6 +25,7 @@ WS_QUEUE_SIZE = 100
 active_cameras = {}
 camera_states = {}  
 annotated_frames = {}
+current_user_id = "unknown"
 frames_lock = threading.Lock()
 cameras_lock = threading.Lock()
 ws_queue = queue.Queue(maxsize=WS_QUEUE_SIZE)
@@ -71,6 +72,7 @@ def audio_listener_thread():
                         payload = {
                             "timestamp": datetime.utcnow().isoformat() + "Z",
                             "unix_time": unix_time,
+                            "user_id": current_user_id,
                             "detections": [{
                                 "class_name": "Voice-SOS",
                                 "confidence": 1.0,
@@ -375,6 +377,7 @@ def inference_loop():
                 payload = {
                     "timestamp": datetime.utcnow().isoformat() + "Z",
                     "unix_time": int(time.time()),
+                    "user_id": current_user_id,
                     "frame_id": state["frame_count"],
                     "total_detections": len(current_detections),
                     "detections": current_detections,
@@ -396,7 +399,9 @@ def scan_network():
     return {"cameras": cameras}
 
 @app.post("/connect/{ip_suffix}")
-def connect_camera(ip_suffix: str):
+def connect_camera(ip_suffix: str, user_id: str = "unknown"):
+    global current_user_id
+    current_user_id = user_id
     local_ip = get_local_ip()
     network_prefix = ".".join(local_ip.split(".")[:3]) + "."
     full_ip = f"{network_prefix}{ip_suffix}"

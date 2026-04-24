@@ -4,18 +4,38 @@ import {
   Calendar, ShieldCheck, History, Settings, Wifi, Search, Plus, Trash2
 } from 'lucide-react';
 import HistoryPage from './HistoryPage';
-import ConfigurationPage from './ConfigurationPage';
+import LandingPage from './LandingPage';
+import LoginPage from './LoginPage';
 
 export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [systemStatus, setSystemStatus] = useState("Connecting...");
-  const [currentPage, setCurrentPage] = useState("dashboard");
+  const [currentPage, setCurrentPage] = useState("landing");
+  const [userId, setUserId] = useState(localStorage.getItem('resq_user_id'));
   const wsRef = useRef(null);
 
   const [discoveredCams, setDiscoveredCams] = useState([]);
   const [activeCams, setActiveCams] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
+
+  // Automatically go to dashboard if a user is already logged in
+  useEffect(() => {
+    if (currentPage === "landing" && userId) {
+      setCurrentPage("dashboard");
+    }
+  }, [userId, currentPage]);
+
+  const handleLoginSuccess = (id) => {
+    setUserId(id);
+    setCurrentPage("dashboard");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('resq_user_id');
+    setUserId(null);
+    setCurrentPage("landing");
+  };
 
   const triggerEmergencyBeep = () => {
     try {
@@ -46,8 +66,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
+
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/frontend";
-    const ws = new WebSocket(wsUrl);
+    // We append the userId so the backend knows which socket belongs to who
+    const ws = new WebSocket(`${wsUrl}?user_id=${userId}`);
     wsRef.current = ws;
 
     ws.onopen = () => setSystemStatus("Monitoring Active");
@@ -96,7 +119,7 @@ export default function App() {
         ws.close();
       }
     };
-  }, []);
+  }, [userId]);
 
   const handleResolve = (eventId) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -123,7 +146,8 @@ export default function App() {
     const suffix = ip.split('.').pop();
     const aiUrl = import.meta.env.VITE_AI_URL || "http://localhost:5000";
     try {
-      await fetch(`${aiUrl}/connect/${suffix}`, { method: "POST" });
+      // Must pass user context to AI layer so it knows who to send alerts for
+      await fetch(`${aiUrl}/connect/${suffix}?user_id=${userId}`, { method: "POST" });
       setActiveCams([...activeCams, ip]);
       setDiscoveredCams(prev => prev.filter(cam => cam !== ip));
     } catch (e) {
@@ -146,11 +170,17 @@ export default function App() {
   const formatDate = (date) => `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   const formatTime = (date) => date.toLocaleTimeString('en-US', { hour12: true });
 
+  if (currentPage === "landing") {
+    return <LandingPage onLoginClick={() => setCurrentPage("login")} />;
+  }
+  if (currentPage === "login") {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} onBack={() => setCurrentPage("landing")} />;
+  }
   if (currentPage === "history") {
-    return <HistoryPage onBack={() => setCurrentPage("dashboard")} />;
+    return <HistoryPage userId={userId} onBack={() => setCurrentPage("dashboard")} />;
   }
   if (currentPage === "configure") {
-    return <ConfigurationPage onBack={() => setCurrentPage("dashboard")} />;
+    return <ConfigurationPage userId={userId} onBack={() => setCurrentPage("dashboard")} />;
   }
 
   return (
@@ -169,6 +199,12 @@ export default function App() {
             className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all"
           >
             <History className="w-4 h-4" /> History
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all ml-2"
+          >
+            Log Out
           </button>
           <div className="flex items-center gap-2 text-sm text-green-400 font-mono ml-4">
             <ShieldCheck className="w-5 h-5" /> AI Core {systemStatus === "Monitoring Active" ? "Online" : "Offline"}

@@ -21,7 +21,7 @@ const escalationColors = {
     Authorities: "text-red-400",
 };
 
-export default function HistoryPage({ onBack }) {
+export default function HistoryPage({ userId, onBack }) {
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -46,7 +46,7 @@ export default function HistoryPage({ onBack }) {
             if (isInitialLoad) setLoading(true); 
             setError(null);
             
-            const res = await fetch(`${API_BASE}/api/history`);
+            const res = await fetch(`${API_BASE}/api/history?user_id=${userId}`);
             
             if (!res.ok) throw new Error("Failed to fetch history");
             
