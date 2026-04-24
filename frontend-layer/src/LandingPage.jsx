@@ -38,7 +38,7 @@ export default function LandingPage({ onLoginClick }) {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
-              href="https://drive.google.com/file/d/1_JbPQpPWwGJDHamLyg84vzE07MERzLqi/view?usp=sharing"
+              href="https://drive.google.com/file/d/1NBLr8X4cs7eaqqDCDgUhYnTL7AUkWAfb/view?usp=sharing"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold px-8 py-4 rounded-xl shadow-lg shadow-blue-900/20 transition-all hover:scale-105 active:scale-95"
