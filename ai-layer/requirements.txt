@@ -2,7 +2,10 @@ ultralytics
 websockets
 numpy
 lapx
-opencv-python-headless
+opencv-python
 fastapi
 uvicorn
 python-multipart
+sounddevice
+vosk
+pyttsx3
