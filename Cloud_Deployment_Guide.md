@@ -19,7 +19,7 @@ git push -u origin main
     *   **Build Command**: `pip install -r requirements.txt`
     *   **Start Command**: `python -m uvicorn main:app --host 0.0.0.0 --port $PORT`
 4.  **Environment Variables**:
-    *   `MONGO_URI`: **IMPORTANT**: You must use a cloud database (like MongoDB Atlas). Localhost will not work.
+    *   `MONGO_URI`: `mongodb+srv://rohithsn18_db_user:resqvision@cluster0.faxvqqh.mongodb.net/?appName=Cluster0`
     *   `TWILIO_SID`: (From your .env)
     *   `TWILIO_TOKEN`: (From your .env)
     *   `TWILIO_PHONE`: (From your .env)
