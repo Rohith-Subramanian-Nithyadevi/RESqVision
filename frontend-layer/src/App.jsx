@@ -87,7 +87,7 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
 
-    const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/frontend";
+    const wsUrl = import.meta.env.VITE_WS_URL || "wss://resqvision-backend.onrender.com/ws/frontend";
     const ws = new WebSocket(`${wsUrl}?user_id=${userId}`);
     wsRef.current = ws;
 

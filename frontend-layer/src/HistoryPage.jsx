@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Trash2, AlertTriangle, Clock, Camera, ShieldAlert, TrendingUp, Loader2, Inbox } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "https://resqvision-backend.onrender.com";
 
 // --- NEW: Color mapping for severity/status badges ---
 const severityColors = {

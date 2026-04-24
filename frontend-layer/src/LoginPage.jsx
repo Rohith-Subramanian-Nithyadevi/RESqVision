@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "https://resqvision-backend.onrender.com";
 
 export default function LoginPage({ onLoginSuccess, onBack }) {
   const [username, setUsername] = useState('');

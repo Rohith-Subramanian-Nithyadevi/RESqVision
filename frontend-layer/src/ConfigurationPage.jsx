@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Trash2, Edit2, Phone, Mail, AlertCircle, MapPin, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "https://resqvision-backend.onrender.com";
 
 export default function ConfigurationPage({ userId, onBack }) {
     const [savedConfigs, setSavedConfigs] = useState([]);
