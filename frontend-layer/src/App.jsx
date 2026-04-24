@@ -19,8 +19,14 @@ export default function App() {
   const [activeCams, setActiveCams] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
 
-  // Automatically go to dashboard if a user is already logged in
+  // Ensure legacy behavior: if user clears cache but wants to use system without explicit login
   useEffect(() => {
+    if (!userId) {
+      const defaultUser = "local_admin_user";
+      localStorage.setItem('resq_user_id', defaultUser);
+      setUserId(defaultUser);
+    }
+    
     if (currentPage === "landing" && userId) {
       setCurrentPage("dashboard");
     }
@@ -32,8 +38,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('resq_user_id');
-    setUserId(null);
+    // Replaced log out with pure dashboard exit logic since login is disabled.
     setCurrentPage("landing");
   };
 
@@ -171,10 +176,10 @@ export default function App() {
   const formatTime = (date) => date.toLocaleTimeString('en-US', { hour12: true });
 
   if (currentPage === "landing") {
-    return <LandingPage onLoginClick={() => setCurrentPage("login")} />;
-  }
-  if (currentPage === "login") {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} onBack={() => setCurrentPage("landing")} />;
+    return <LandingPage onLoginClick={() => {
+        setUserId(localStorage.getItem('resq_user_id') || "local_admin_user");
+        setCurrentPage("dashboard");
+    }} />;
   }
   if (currentPage === "history") {
     return <HistoryPage userId={userId} onBack={() => setCurrentPage("dashboard")} />;
@@ -204,7 +209,7 @@ export default function App() {
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all ml-2"
           >
-            Log Out
+            Exit Dashboard
           </button>
           <div className="flex items-center gap-2 text-sm text-green-400 font-mono ml-4">
             <ShieldCheck className="w-5 h-5" /> AI Core {systemStatus === "Monitoring Active" ? "Online" : "Offline"}

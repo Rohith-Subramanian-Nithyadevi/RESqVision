@@ -23,8 +23,10 @@ if not exist "venv" (
 
 :: Activate venv and install requirements
 call venv\Scripts\activate.bat
-echo Installing Dependencies (this might take a few minutes)...
-pip install -r requirements.txt -q
+echo Installing Dependencies...
+echo WARNING: Downloading PyTorch and YOLO can take 5-15 minutes (2GB+). 
+echo Please DO NOT close this window. You will see download progress below.
+pip install -r requirements.txt
 
 echo.
 echo ========================================================
