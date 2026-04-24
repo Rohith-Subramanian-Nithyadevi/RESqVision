@@ -108,11 +108,12 @@ export default function App() {
   const handleScan = async () => {
     setIsScanning(true);
     try {
-      const res = await fetch("http://localhost:5000/scan");
+      const aiUrl = import.meta.env.VITE_AI_URL || "http://localhost:5000";
+      const res = await fetch(`${aiUrl}/scan`);
       const data = await res.json();
       setDiscoveredCams(data.cameras || []);
     } catch (e) {
-      console.error("Scan failed. Is the AI backend running on port 5000?", e);
+      console.error("Scan failed. Is the AI backend running?", e);
     }
     setIsScanning(false);
   };
@@ -120,8 +121,9 @@ export default function App() {
   const connectCamera = async (ip) => {
     if (activeCams.includes(ip)) return;
     const suffix = ip.split('.').pop();
+    const aiUrl = import.meta.env.VITE_AI_URL || "http://localhost:5000";
     try {
-      await fetch(`http://localhost:5000/connect/${suffix}`, { method: "POST" });
+      await fetch(`${aiUrl}/connect/${suffix}`, { method: "POST" });
       setActiveCams([...activeCams, ip]);
       setDiscoveredCams(prev => prev.filter(cam => cam !== ip));
     } catch (e) {
@@ -131,8 +133,9 @@ export default function App() {
 
   const disconnectCamera = async (ip) => {
     const suffix = ip.split('.').pop();
+    const aiUrl = import.meta.env.VITE_AI_URL || "http://localhost:5000";
     try {
-      await fetch(`http://localhost:5000/disconnect/${suffix}`, { method: "POST" });
+      await fetch(`${aiUrl}/disconnect/${suffix}`, { method: "POST" });
       setActiveCams(prev => prev.filter(cam => cam !== ip));
       setDiscoveredCams([...discoveredCams, ip]);
     } catch (e) {
@@ -245,7 +248,7 @@ export default function App() {
                     >
                       <div className="flex-1 relative">
                         <img
-                          src={`http://localhost:5000/video_feed/${ip.split('.').pop()}`}
+                          src={`${import.meta.env.VITE_AI_URL || "http://localhost:5000"}/video_feed/${ip.split('.').pop()}`}
                           alt={`Feed ${ip}`}
                           className="absolute inset-0 w-full h-full object-contain"
                           onError={(e) => { e.target.style.display = 'none'; }}
