@@ -3,6 +3,14 @@ echo ========================================================
 echo        RESqVision AI Core - Automated Installer
 echo ========================================================
 echo.
+
+:: ─── Cloud Backend URL ───────────────────────────────────
+:: Change the line below to your Render backend URL.
+:: For local use, leave it as-is (localhost).
+:: Example: set BACKEND_WS_URL=wss://resqvision-backend.onrender.com/ws/ai
+set BACKEND_WS_URL=wss://resqvision-backend.onrender.com/ws/ai
+:: ─────────────────────────────────────────────────────────
+
 echo Installing requirements... Please wait.
 echo.
 
@@ -31,6 +39,7 @@ pip install -r requirements.txt
 echo.
 echo ========================================================
 echo    Installation Complete! Starting the AI Core...
+echo    Backend URL: %BACKEND_WS_URL%
 echo    You can now minimize this window and open your 
 echo    RESqVision Cloud Dashboard.
 echo ========================================================

@@ -6,3 +6,4 @@ pydantic
 twilio
 sendgrid
 python-dotenv
+bcrypt

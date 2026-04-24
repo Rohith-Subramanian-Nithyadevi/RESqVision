@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Trash2, Edit2, Phone, Mail, AlertCircle, MapPin } from 'lucide-react';
+import { Settings, Trash2, Edit2, Phone, Mail, AlertCircle, MapPin, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -7,24 +7,43 @@ export default function ConfigurationPage({ userId, onBack }) {
     const [savedConfigs, setSavedConfigs] = useState([]);
     const [detectionType, setDetectionType] = useState('');
     const [isEnabled, setIsEnabled] = useState(true);
-    const [locationAddress, setLocationAddress] = useState(''); // NEW STATE
+    const [locationAddress, setLocationAddress] = useState('');
     const [numEscalations, setNumEscalations] = useState(1);
     const [escalations, setEscalations] = useState([
         { level: 1, type: 'sms', contact: '', delay_seconds: 0, send_location: false }
     ]);
+    const [saving, setSaving] = useState(false);
+    const [loadingConfigs, setLoadingConfigs] = useState(true);
+    const [editingType, setEditingType] = useState(null); // Track which config is being edited
 
+    // FIX: Include userId in dependency so configs refresh if user changes
     useEffect(() => {
-        fetchConfigs();
-    }, []);
+        if (userId) {
+            fetchConfigs();
+        }
+    }, [userId]);
 
     const fetchConfigs = async () => {
         try {
+            setLoadingConfigs(true);
             const res = await fetch(`${API_BASE}/api/config?user_id=${userId}`);
+            if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
             setSavedConfigs(data);
         } catch (err) {
             console.error("Failed to fetch configs", err);
+        } finally {
+            setLoadingConfigs(false);
         }
+    };
+
+    const resetForm = () => {
+        setDetectionType('');
+        setIsEnabled(true);
+        setLocationAddress('');
+        setNumEscalations(1);
+        setEscalations([{ level: 1, type: 'sms', contact: '', delay_seconds: 0, send_location: false }]);
+        setEditingType(null);
     };
 
     const handleNumEscalationsChange = (num) => {
@@ -40,29 +59,31 @@ export default function ConfigurationPage({ userId, onBack }) {
 
     const updateEscalation = (index, field, value) => {
         const updated = [...escalations];
-        updated[index][field] = value;
+        updated[index] = { ...updated[index], [field]: value };
         setEscalations(updated);
     };
 
     const validateForm = () => {
         if (!detectionType) return "Please select a detection type.";
-        if (!isEnabled) return null;
+        if (!isEnabled) return null; // Disabled configs don't need escalation validation
 
         const phoneRegex = /^[0-9]{10}$/;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
         for (let i = 0; i < escalations.length; i++) {
             const esc = escalations[i];
-            if (esc.type === 'sms' && !phoneRegex.test(esc.contact.replace('+91', ''))) {
+            if (!esc.contact || !esc.contact.trim()) {
+                return `Level ${esc.level}: Contact field is empty.`;
+            }
+            if (esc.type === 'sms' && !phoneRegex.test(esc.contact.replace(/^\+91/, '').trim())) {
                 return `Level ${esc.level}: Invalid phone number. Please enter 10 digits.`;
             }
-            if (esc.type === 'gmail' && !emailRegex.test(esc.contact)) {
+            if (esc.type === 'gmail' && !emailRegex.test(esc.contact.trim())) {
                 return `Level ${esc.level}: Invalid email format.`;
             }
             if (esc.delay_seconds < 0) {
                 return `Level ${esc.level}: Delay cannot be negative.`;
             }
-            // NEW: Prevent sending an empty location
             if (esc.send_location && !locationAddress.trim()) {
                 return `Level ${esc.level}: You opted to send the location, but the Location Address field is empty.`;
             }
@@ -74,8 +95,10 @@ export default function ConfigurationPage({ userId, onBack }) {
         const error = validateForm();
         if (error) return alert(error);
 
+        setSaving(true);
+
         const formattedEscalations = escalations.map(esc => {
-            let finalContact = esc.contact;
+            let finalContact = esc.contact.trim();
             const stripped = finalContact.replace(/^\+91/, '');
             if (esc.type === 'sms') {
                 finalContact = `+91${stripped}`;
@@ -86,50 +109,102 @@ export default function ConfigurationPage({ userId, onBack }) {
         const payload = {
             detection_type: String(detectionType).trim(),
             enabled: Boolean(isEnabled),
-            location_address: String(locationAddress).trim(), // INCLUDED IN PAYLOAD
+            location_address: String(locationAddress).trim(),
             user_id: userId,
             escalations: Boolean(isEnabled) ? formattedEscalations : []
         };
 
         try {
-            await fetch(`${API_BASE}/api/config`, {
+            const res = await fetch(`${API_BASE}/api/config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            fetchConfigs();
-            alert(`SUCCESS: ${payload.detection_type} configuration saved.`);
+
+            if (!res.ok) throw new Error("Server returned an error");
+
+            await fetchConfigs();
+            resetForm();
+            alert(`✅ ${payload.detection_type} configuration saved successfully.`);
         } catch (err) {
-            alert("Error saving configuration to database.");
+            alert("Error saving configuration to database. Is the backend running?");
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (type) => {
         if (!window.confirm(`Delete configuration for ${type}?`)) return;
         try {
-            await fetch(`${API_BASE}/api/config/${type}?user_id=${userId}`, { method: 'DELETE' });
-            fetchConfigs();
+            const res = await fetch(`${API_BASE}/api/config/${type}?user_id=${userId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error("Delete failed");
+            await fetchConfigs();
+            // If the user was editing this config, clear the form
+            if (editingType === type) {
+                resetForm();
+            }
         } catch (err) {
-            alert("Error deleting config");
+            alert("Error deleting config. Is the backend running?");
+        }
+    };
+
+    const handleEdit = (config) => {
+        setDetectionType(config.detection_type);
+        setIsEnabled(config.enabled);
+        setLocationAddress(config.location_address || '');
+        setEditingType(config.detection_type);
+
+        if (config.enabled && config.escalations?.length > 0) {
+            setNumEscalations(config.escalations.length);
+            const cleaned = config.escalations.map(esc => ({
+                ...esc,
+                contact: esc.type === 'sms'
+                    ? esc.contact.replace(/^\+91/, '')
+                    : esc.contact,
+                send_location: esc.send_location || false
+            }));
+            setEscalations(cleaned);
+        } else {
+            setNumEscalations(1);
+            setEscalations([{ level: 1, type: 'sms', contact: '', delay_seconds: 0, send_location: false }]);
         }
     };
 
     return (
         <div className="min-h-screen bg-[#0B1120] text-slate-200 flex flex-col">
             <nav className="px-6 py-4 bg-[#0F172A] border-b border-slate-800 flex items-center justify-between">
-                <h1 className="text-xl font-bold tracking-wider text-white">CCTV-SOS-AUTOMATION</h1>
-                <button
-                    onClick={onBack}
-                    className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all"
-                >
-                    <Settings className="w-4 h-4" /> Back to Dashboard
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onBack}
+                        className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all"
+                    >
+                        <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+                    </button>
+                    <div className="w-px h-6 bg-slate-700" />
+                    <h1 className="text-xl font-bold tracking-wider text-white">CONFIGURE ALERTS</h1>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-400 font-mono">
+                    <Settings className="w-5 h-5 text-blue-400" />
+                    <span>{savedConfigs.length} Rule{savedConfigs.length !== 1 ? "s" : ""} Active</span>
+                </div>
             </nav>
 
-            <div className="flex flex-1 p-6 gap-6 max-w-7xl mx-auto w-full">
+            <div className="flex flex-1 p-6 gap-6 max-w-7xl mx-auto w-full overflow-y-auto">
                 {/* LEFT PANEL: CONFIG FORM */}
                 <div className="flex-1 bg-[#111827] border border-slate-800 rounded-xl p-6">
-                    <h2 className="text-2xl font-bold text-white mb-6">Configure Escalation</h2>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-white">
+                            {editingType ? `Edit: ${editingType}` : "New Escalation Rule"}
+                        </h2>
+                        {editingType && (
+                            <button
+                                onClick={resetForm}
+                                className="text-xs text-slate-400 hover:text-white bg-[#1E293B] px-3 py-1.5 rounded transition-all"
+                            >
+                                Cancel Edit
+                            </button>
+                        )}
+                    </div>
 
                     <div className="space-y-6">
                         <div>
@@ -139,6 +214,11 @@ export default function ConfigurationPage({ userId, onBack }) {
                                 onChange={(e) => {
                                     setDetectionType(e.target.value);
                                     setIsEnabled(true);
+                                    if (!editingType) {
+                                        // Only reset escalations for new configs
+                                        setEscalations([{ level: 1, type: 'sms', contact: '', delay_seconds: 0, send_location: false }]);
+                                        setNumEscalations(1);
+                                    }
                                 }}
                                 className="w-full bg-[#1E293B] border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500"
                             >
@@ -166,7 +246,6 @@ export default function ConfigurationPage({ userId, onBack }) {
                                     </button>
                                     <button
                                         onClick={() => setIsEnabled(false)}
-                                        // FIX: This prevents the user from disabling Voice-SOS
                                         disabled={detectionType === 'Voice-SOS'}
                                         title={detectionType === 'Voice-SOS' ? "Voice SOS must remain enabled for safety." : ""}
                                         className={`flex-1 py-3 rounded-lg font-bold transition-all ${
@@ -185,7 +264,7 @@ export default function ConfigurationPage({ userId, onBack }) {
 
                         {detectionType && isEnabled && (
                             <>
-                                {/* NEW: Location Address Input */}
+                                {/* Location Address Input */}
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-2">
                                         Incident Location Address
@@ -273,7 +352,7 @@ export default function ConfigurationPage({ userId, onBack }) {
                                                 />
                                             </div>
 
-                                            {/* NEW: Send Location Checkbox */}
+                                            {/* Send Location Checkbox */}
                                             <div className="flex items-center gap-2 pt-1">
                                                 <input
                                                     type="checkbox"
@@ -294,21 +373,35 @@ export default function ConfigurationPage({ userId, onBack }) {
 
                         <button
                             onClick={handleSave}
-                            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg transition-all mt-4 shadow-lg flex justify-center items-center gap-2"
+                            disabled={saving || !detectionType}
+                            className="w-full bg-green-600 hover:bg-green-500 disabled:bg-green-600/50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-all mt-4 shadow-lg flex justify-center items-center gap-2"
                         >
-                            Save Configuration to Database
+                            {saving ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="w-4 h-4" /> Save Configuration
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
 
                 {/* RIGHT PANEL: SAVED CONFIGS */}
                 <div className="flex-1 bg-[#111827] border border-slate-800 rounded-xl p-6">
-                    <h2 className="text-2xl font-bold text-white mb-6">Database Status</h2>
+                    <h2 className="text-2xl font-bold text-white mb-6">Saved Rules</h2>
 
-                    {savedConfigs.length === 0 ? (
+                    {loadingConfigs ? (
+                        <div className="flex flex-col items-center justify-center h-[60%] gap-3 text-slate-500">
+                            <Loader2 className="w-10 h-10 animate-spin" />
+                            <p className="text-sm">Loading configurations...</p>
+                        </div>
+                    ) : savedConfigs.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-[60%] text-slate-500">
                             <AlertCircle className="w-12 h-12 mb-4 opacity-50" />
-                            <p>MongoDB is empty.</p>
+                            <p>No configurations saved yet.</p>
                             <p className="text-sm mt-2 text-center">
                                 Your AI will ignore all detections until you save a configuration here.
                             </p>
@@ -318,7 +411,9 @@ export default function ConfigurationPage({ userId, onBack }) {
                             {savedConfigs.map(config => (
                                 <div
                                     key={config._id}
-                                    className={`bg-[#1E293B] border-l-4 rounded-r-lg p-4 relative ${config.enabled ? 'border-green-500' : 'border-red-500'}`}
+                                    className={`bg-[#1E293B] border-l-4 rounded-r-lg p-4 relative transition-all ${
+                                        config.enabled ? 'border-green-500' : 'border-red-500'
+                                    } ${editingType === config.detection_type ? 'ring-2 ring-blue-500' : ''}`}
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
@@ -326,7 +421,6 @@ export default function ConfigurationPage({ userId, onBack }) {
                                             <span className={`text-xs px-2 py-0.5 rounded font-bold uppercase tracking-wider ${config.enabled ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                                                 Status: {config.enabled ? 'Active' : 'Ignored'}
                                             </span>
-                                            {/* Show location in DB view if exists */}
                                             {config.location_address && (
                                                 <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
                                                     <MapPin className="w-3 h-3" /> {config.location_address}
@@ -335,37 +429,27 @@ export default function ConfigurationPage({ userId, onBack }) {
                                         </div>
                                         <div className="flex gap-2">
                                             <button
-                                                onClick={() => {
-                                                    setDetectionType(config.detection_type);
-                                                    setIsEnabled(config.enabled);
-                                                    setLocationAddress(config.location_address || ''); // LOAD LOCATION
-                                                    
-                                                    if (config.enabled && config.escalations?.length > 0) {
-                                                        setNumEscalations(config.escalations.length);
-                                                        const cleaned = config.escalations.map(esc => ({
-                                                            ...esc,
-                                                            contact: esc.type === 'sms'
-                                                                ? esc.contact.replace(/^\+91/, '')
-                                                                : esc.contact,
-                                                            send_location: esc.send_location || false // LOAD CHECKBOX
-                                                        }));
-                                                        setEscalations(cleaned);
-                                                    }
-                                                }}
-                                                className="p-2 bg-blue-600 hover:bg-blue-500 rounded text-white transition-colors"
+                                                onClick={() => handleEdit(config)}
+                                                className={`p-2 rounded text-white transition-colors ${
+                                                    editingType === config.detection_type
+                                                        ? 'bg-blue-500'
+                                                        : 'bg-blue-600 hover:bg-blue-500'
+                                                }`}
+                                                title="Edit configuration"
                                             >
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => handleDelete(config.detection_type)}
                                                 className="p-2 bg-slate-700 hover:bg-red-500 rounded text-white transition-colors"
+                                                title="Delete configuration"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
                                     </div>
 
-                                    {config.enabled && config.escalations && (
+                                    {config.enabled && config.escalations && config.escalations.length > 0 && (
                                         <div className="mt-4 space-y-2">
                                             <p className="text-xs text-slate-400 font-bold uppercase">Escalation Chain:</p>
                                             {config.escalations.map((esc, idx) => (

@@ -38,7 +38,7 @@ export default function HistoryPage({ userId, onBack }) {
 
         // 3. Cleanup the interval if you click away to the main dashboard
         return () => clearInterval(interval);
-    }, []);
+    }, [userId]);
 
     const fetchHistory = async (isInitialLoad = true) => {
         try {

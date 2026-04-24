@@ -1,3 +1,4 @@
+import os
 import cv2
 import json
 import time
@@ -18,7 +19,7 @@ from fastapi.responses import StreamingResponse
 # --- Configuration ---
 MODEL_A_PATH = "besta.pt" 
 MODEL_F_PATH = "best_ff.pt"
-WEBSOCKET_URL = "ws://localhost:8000/ws/ai"
+WEBSOCKET_URL = os.environ.get("BACKEND_WS_URL", "ws://localhost:8000/ws/ai")
 WS_QUEUE_SIZE = 100
 
 # --- Global State ---

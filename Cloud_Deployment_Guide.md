@@ -1,53 +1,60 @@
 # Cloud Deployment Guide (RESqVision)
 
-This guide helps you deploy the RESqVision system to the cloud using Render (Backend) and Vercel (Frontend).
+## Live URLs
+- **Frontend (Vercel)**: https://resqvision-dun.vercel.app/
+- **Backend (Render)**: https://resqvision-backend.onrender.com
+
+---
 
 ## 1. Push to GitHub
-I have already initialized git and committed your code. You need to push it to your repository:
 ```bash
+git add -A
+git commit -m "Full codebase audit fixes: auth, routing, config, cloud deploy"
 git push -u origin main
 ```
-*If prompted for credentials, please enter your GitHub username and Personal Access Token (or sign in via browser).*
 
-## 2. Deploy Backend to Render
-1.  **Login to Render**: [render.com](https://render.com)
-2.  **New Web Service**: Connect your GitHub repository `RESqVision`.
-3.  **Configure Service**:
-    *   **Name**: `resqvision-backend`
-    *   **Root Directory**: `backend-layer`
-    *   **Runtime**: `Python 3`
-    *   **Build Command**: `pip install -r requirements.txt`
-    *   **Start Command**: `python -m uvicorn main:app --host 0.0.0.0 --port $PORT`
-4.  **Environment Variables**:
-    *   `MONGO_URI`: `mongodb+srv://rohithsn18_db_user:resqvision@cluster0.faxvqqh.mongodb.net/?appName=Cluster0`
-    *   `TWILIO_SID`: (From your .env)
-    *   `TWILIO_TOKEN`: (From your .env)
-    *   `TWILIO_PHONE`: (From your .env)
-    *   `SENDGRID_KEY`: (From your .env)
-    *   `FROM_EMAIL`: (From your .env)
+## 2. Backend on Render — Already Deployed ✅
+**Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
-## 3. Deploy Frontend to Vercel
-1.  **Login to Vercel**: [vercel.com](https://vercel.com)
-2.  **Add New Project**: Import the `RESqVision` repository.
-3.  **Configure Project**:
-    *   **Root Directory**: `frontend-layer`
-    *   **Framework Preset**: `Vite`
-    *   **Build Command**: `npm run build`
-    *   **Output Directory**: `dist`
-4.  **Environment Variables**:
-    *   `VITE_WS_URL`: Set this to `wss://your-backend-name.onrender.com/ws/frontend`
-    *   `VITE_AI_URL`: If your AI layer runs locally, you can use `http://localhost:5000` (works if you browse from the same PC) or use an `ngrok` tunnel for remote access.
+### Required Environment Variables (set in Render Dashboard):
+| Variable | Value |
+|----------|-------|
+| `MONGO_URI` | *(your MongoDB Atlas connection string)* |
+| `TWILIO_SID` | *(from your .env)* |
+| `TWILIO_TOKEN` | *(from your .env)* |
+| `TWILIO_PHONE` | *(from your .env)* |
+| `SENDGRID_KEY` | *(from your .env)* |
+| `FROM_EMAIL` | *(from your .env)* |
+
+> **Important**: After pushing the new code, go to Render Dashboard → Manual Deploy → "Clear build cache & deploy" to pick up the new auth endpoints.
+
+## 3. Frontend on Vercel — CRITICAL ENV VARS NEEDED ⚠️
+These must be set in **Vercel Dashboard → Settings → Environment Variables**:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | `https://resqvision-backend.onrender.com` |
+| `VITE_WS_URL` | `wss://resqvision-backend.onrender.com/ws/frontend` |
+| `VITE_AI_URL` | `http://localhost:5000` |
+
+> **CRITICAL**: After adding these variables, you must **redeploy** the frontend. Vite bakes `VITE_*` vars into the JS bundle at build time. Without redeployment, the frontend will still try to connect to `localhost:8000`.
+
+### Steps:
+1. Go to https://vercel.com → your project → Settings → Environment Variables
+2. Add the 3 variables above
+3. Go to Deployments → click "..." on latest → Redeploy
 
 ## 4. Distributing the AI Layer to Users
-You have chosen a **Local-AI / Cloud-UI Architecture**. 
-This means you host the Frontend and Backend on Vercel/Render, but your users run the AI on their own PCs.
+The architecture is **Local-AI + Cloud-UI**:
+- Frontend and Backend run in the cloud (Vercel/Render)
+- AI processing runs on the user's local PC
 
-1. **Package the AI Layer**: 
-   Zip the entire `ai-layer` folder (including the heavy `.pt` files and the new `install_and_run.bat`).
-2. **Host the ZIP**: 
-   Upload `RESqVision_Installer.zip` to your Vercel `public` folder, or Google Drive, and link it to your Landing Page's Download button.
-3. **User Flow**:
-   - The user visits your Vercel website and registers an account.
-   - The user downloads and unzips the `ai-layer`.
-   - They double-click `install_and_run.bat`. It will automatically install Python dependencies and start the AI engine.
-   - The AI engine will connect to your cloud Backend via `VITE_WS_URL` and send its alerts bound exclusively to their User ID!
+### For end users:
+1. Visit https://resqvision-dun.vercel.app/ and register an account
+2. Download and unzip the `ai-layer` folder
+3. Double-click `install_and_run.bat` — it auto-installs dependencies and connects to the cloud backend
+4. Open the dashboard in their browser to manage cameras and alerts
+
+### The `install_and_run.bat` is pre-configured to:
+- Connect to `wss://resqvision-backend.onrender.com/ws/ai`
+- Send alerts tagged with the user's ID

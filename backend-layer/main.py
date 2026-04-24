@@ -1,11 +1,13 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from datetime import datetime
+from pydantic import BaseModel
 import json
 import os
 import asyncio
+import bcrypt
 from twilio.rest import Client as TwilioClient
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -32,10 +34,70 @@ mongo_client = AsyncIOMotorClient(MONGO_URI)
 db = mongo_client.sos_database
 alerts_collection = db.alerts
 config_collection = db.configurations
+users_collection = db.users
 
 connected_clients: dict[WebSocket, str] = {}
 clients_lock = asyncio.Lock()
 
+# ──────────────────────────────────────────
+# AUTH MODELS
+# ──────────────────────────────────────────
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+# ──────────────────────────────────────────
+# AUTH ENDPOINTS
+# ──────────────────────────────────────────
+@app.post("/auth/register")
+async def register_user(req: AuthRequest):
+    username = req.username.strip().lower()
+    password = req.password.strip()
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required.")
+
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
+
+    if len(password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+
+    existing = await users_collection.find_one({"username": username})
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already exists.")
+
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    await users_collection.insert_one({
+        "username": username,
+        "password_hash": hashed.decode("utf-8"),
+        "created_at": datetime.utcnow()
+    })
+
+    return {"status": "success", "user_id": username}
+
+@app.post("/auth/login")
+async def login_user(req: AuthRequest):
+    username = req.username.strip().lower()
+    password = req.password.strip()
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required.")
+
+    user = await users_collection.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    stored_hash = user["password_hash"].encode("utf-8")
+    if not bcrypt.checkpw(password.encode("utf-8"), stored_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    return {"status": "success", "user_id": username}
+
+# ──────────────────────────────────────────
+# NOTIFICATION HELPERS
+# ──────────────────────────────────────────
 def send_sms(to_phone, message):
     try:
         if not TWILIO_SID:
@@ -57,6 +119,9 @@ def send_email(to_email, subject, content):
     except Exception as e:
         print(f"SendGrid Error: {e}")
 
+# ──────────────────────────────────────────
+# ESCALATION PROCESSOR
+# ──────────────────────────────────────────
 async def process_dynamic_escalation(event_id, class_name, config):
     escalations = config.get("escalations", [])
     escalations.sort(key=lambda x: x.get("level", 1))
@@ -80,9 +145,8 @@ async def process_dynamic_escalation(event_id, class_name, config):
         contact = esc.get("contact")
         contact_type = esc.get("type")
         level = esc.get("level")
-        send_loc = esc.get("send_location", False) # Check user preference
+        send_loc = esc.get("send_location", False)
 
-        # Format string based on user preference
         loc_text = f" | Location: {location_address}" if send_loc else ""
 
         if contact_type == "sms":
@@ -95,6 +159,9 @@ async def process_dynamic_escalation(event_id, class_name, config):
             {"$set": {"escalation_level": f"Level {level}"}}
         )
 
+# ──────────────────────────────────────────
+# AI WEBSOCKET — receives alerts from ai-layer
+# ──────────────────────────────────────────
 @app.websocket("/ws/ai")
 async def ai_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -110,6 +177,7 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                 continue
 
             authorized_emergency = False
+            active_user_id = json_payload.get("user_id", "unknown")
 
             if json_payload.get("alerts", {}).get("emergency_detected"):
                 authorized_detections = []
@@ -118,9 +186,13 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                     class_name = det["class_name"]
                     camera_ip = det.get("camera_ip") or json_payload.get("camera_ip", "Unknown")
 
-                    if class_name in ["Fire", "Fall-person", "Accident", "Violence", "Unconsciousness","Voice-SOS"]:
-                        config = await config_collection.find_one({"detection_type": class_name})
-                        print(f"DB CHECK -> Target: {class_name} | Found Config: {config}")
+                    if class_name in ["Fire", "Fall-person", "Accident", "Violence", "Unconsciousness", "Voice-SOS"]:
+                        # FIX: Query config with user_id to prevent cross-user config leaks
+                        config = await config_collection.find_one({
+                            "detection_type": class_name,
+                            "user_id": active_user_id
+                        })
+                        print(f"DB CHECK -> Target: {class_name} | User: {active_user_id} | Found Config: {config is not None}")
 
                         if config and config.get("enabled"):
                             authorized_emergency = True
@@ -129,6 +201,7 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                             existing_active = await alerts_collection.find_one({
                                 "class_name": class_name,
                                 "camera_id": camera_ip,
+                                "user_id": active_user_id,
                                 "status": "UNRESOLVED"
                             })
 
@@ -142,7 +215,7 @@ async def ai_websocket_endpoint(websocket: WebSocket):
 
                                 doc = {
                                     "event_id": event_id,
-                                    "user_id": json_payload.get("user_id", "unknown"),
+                                    "user_id": active_user_id,
                                     "camera_id": camera_ip,
                                     "class_name": class_name,
                                     "confidence": det["confidence"],
@@ -168,8 +241,6 @@ async def ai_websocket_endpoint(websocket: WebSocket):
 
             modified_data = json.dumps(json_payload)
 
-            active_user_id = json_payload.get("user_id")
-            
             async with clients_lock:
                 snapshot = list(connected_clients.items())
 
@@ -190,6 +261,9 @@ async def ai_websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
 
+# ──────────────────────────────────────────
+# FRONTEND WEBSOCKET — sends alerts to dashboard
+# ──────────────────────────────────────────
 @app.websocket("/ws/frontend")
 async def frontend_websocket_endpoint(websocket: WebSocket, user_id: str = None):
     await websocket.accept()
@@ -209,6 +283,9 @@ async def frontend_websocket_endpoint(websocket: WebSocket, user_id: str = None)
             if websocket in connected_clients:
                 del connected_clients[websocket]
 
+# ──────────────────────────────────────────
+# CONFIG REST ENDPOINTS
+# ──────────────────────────────────────────
 @app.get("/api/config")
 async def get_configs(user_id: str = None):
     configs = []
@@ -236,6 +313,9 @@ async def delete_config(detection_type: str, user_id: str = None):
     await config_collection.delete_one(query)
     return {"status": "success"}
 
+# ──────────────────────────────────────────
+# HISTORY REST ENDPOINTS
+# ──────────────────────────────────────────
 @app.get("/api/history")
 async def get_sos_history(user_id: str = None):
     incidents = []
@@ -254,6 +334,14 @@ async def delete_sos_incident(event_id: str):
     await alerts_collection.delete_one({"event_id": event_id})
     return {"detail": "Incident deleted"}
 
+# ──────────────────────────────────────────
+# HEALTH CHECK
+# ──────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

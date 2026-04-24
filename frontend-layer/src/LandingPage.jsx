@@ -17,7 +17,7 @@ export default function LandingPage({ onLoginClick }) {
             onClick={onLoginClick}
             className="text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 px-5 py-2.5 rounded-lg transition-all"
           >
-            Access Dashboard
+            Login / Register
           </button>
         </div>
       </nav>
@@ -50,7 +50,7 @@ export default function LandingPage({ onLoginClick }) {
               onClick={onLoginClick}
               className="flex items-center gap-2 bg-[#1E293B] hover:bg-[#334155] border border-slate-700 text-white font-semibold px-8 py-4 rounded-xl transition-all hover:scale-105 active:scale-95"
             >
-              Manage System <ChevronRight className="w-5 h-5" />
+              Login to Dashboard <ChevronRight className="w-5 h-5" />
             </button>
           </div>
           <p className="text-xs text-slate-500 mt-4">Requires Windows 10/11 • 100% Free • Local Processing</p>
@@ -88,6 +88,30 @@ export default function LandingPage({ onLoginClick }) {
               </div>
               <h3 className="text-xl font-bold text-white mb-3">Multi-Camera Support</h3>
               <p className="text-slate-400">Scan and connect to multiple local IP cameras simultaneously with our seamless 1-click Windows AI installer.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How It Works Section */}
+      <div id="how-it-works" className="py-20 bg-[#0B1120] border-t border-slate-800">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <h2 className="text-3xl font-bold text-white mb-12">How It Works</h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <div>
+              <div className="text-4xl font-extrabold text-blue-500 mb-3">1</div>
+              <h3 className="text-lg font-bold text-white mb-2">Download & Install</h3>
+              <p className="text-slate-400 text-sm">Download the AI Core installer. Run the batch file — it sets everything up automatically.</p>
+            </div>
+            <div>
+              <div className="text-4xl font-extrabold text-indigo-500 mb-3">2</div>
+              <h3 className="text-lg font-bold text-white mb-2">Connect Cameras</h3>
+              <p className="text-slate-400 text-sm">Use the dashboard to scan your local network and connect to IP cameras with one click.</p>
+            </div>
+            <div>
+              <div className="text-4xl font-extrabold text-green-500 mb-3">3</div>
+              <h3 className="text-lg font-bold text-white mb-2">Get Instant Alerts</h3>
+              <p className="text-slate-400 text-sm">Receive real-time SMS and email alerts when the AI detects an emergency on any camera.</p>
             </div>
           </div>
         </div>

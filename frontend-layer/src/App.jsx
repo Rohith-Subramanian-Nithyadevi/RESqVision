@@ -1,47 +1,59 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Camera, AlertCircle, CheckCircle, X, MapPin, Clock,
-  Calendar, ShieldCheck, History, Settings, Wifi, Search, Plus, Trash2
+  Calendar, ShieldCheck, History, Settings, Wifi, Search, Plus, Trash2, LogOut
 } from 'lucide-react';
 import HistoryPage from './HistoryPage';
 import LandingPage from './LandingPage';
 import LoginPage from './LoginPage';
+import ConfigurationPage from './ConfigurationPage';
 
 export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [systemStatus, setSystemStatus] = useState("Connecting...");
-  const [currentPage, setCurrentPage] = useState("landing");
-  const [userId, setUserId] = useState(localStorage.getItem('resq_user_id'));
+  const [currentPage, setCurrentPage] = useState(() => {
+    // On load: if we have a saved user session, go to dashboard; otherwise landing
+    return localStorage.getItem('resq_user_id') ? "dashboard" : "landing";
+  });
+  const [userId, setUserId] = useState(() => localStorage.getItem('resq_user_id'));
   const wsRef = useRef(null);
 
   const [discoveredCams, setDiscoveredCams] = useState([]);
   const [activeCams, setActiveCams] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
 
-  // Ensure legacy behavior: if user clears cache but wants to use system without explicit login
-  useEffect(() => {
-    if (!userId) {
-      const defaultUser = "local_admin_user";
-      localStorage.setItem('resq_user_id', defaultUser);
-      setUserId(defaultUser);
-    }
-    
-    if (currentPage === "landing" && userId) {
-      setCurrentPage("dashboard");
-    }
-  }, [userId, currentPage]);
-
+  // ── Auth Handlers ────────────────────────────────────────
   const handleLoginSuccess = (id) => {
+    localStorage.setItem('resq_user_id', id);
     setUserId(id);
     setCurrentPage("dashboard");
   };
 
   const handleLogout = () => {
-    // Replaced log out with pure dashboard exit logic since login is disabled.
+    // Clear auth state completely
+    localStorage.removeItem('resq_user_id');
+    setUserId(null);
+    setAlerts([]);
+    setActiveCams([]);
+    setDiscoveredCams([]);
+    setSystemStatus("Connecting...");
+    // Close the WebSocket so it doesn't try to reconnect with old user
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
     setCurrentPage("landing");
   };
 
+  // ── Guard: Prevent unauthorized access to dashboard ──────
+  useEffect(() => {
+    if (!userId && currentPage !== "landing" && currentPage !== "login") {
+      setCurrentPage("landing");
+    }
+  }, [userId, currentPage]);
+
+  // ── Emergency Sound ──────────────────────────────────────
   const triggerEmergencyBeep = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -65,16 +77,17 @@ export default function App() {
     }
   };
 
+  // ── Clock Timer ──────────────────────────────────────────
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // ── WebSocket Connection ─────────────────────────────────
   useEffect(() => {
     if (!userId) return;
 
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/frontend";
-    // We append the userId so the backend knows which socket belongs to who
     const ws = new WebSocket(`${wsUrl}?user_id=${userId}`);
     wsRef.current = ws;
 
@@ -87,7 +100,7 @@ export default function App() {
         if (payload.alerts?.emergency_detected) {
           payload.detections.forEach(det => {
             const className = det.class_name;
-            if (!["Fire", "Fall-person", "Accident", "Violence", "Unconsciousness","Voice-SOS"].includes(className)) {
+            if (!["Fire", "Fall-person", "Accident", "Violence", "Unconsciousness", "Voice-SOS"].includes(className)) {
               return;
             }
 
@@ -126,6 +139,7 @@ export default function App() {
     };
   }, [userId]);
 
+  // ── Camera Handlers ──────────────────────────────────────
   const handleResolve = (eventId) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ action: "resolve", event_id: eventId }));
@@ -151,7 +165,6 @@ export default function App() {
     const suffix = ip.split('.').pop();
     const aiUrl = import.meta.env.VITE_AI_URL || "http://localhost:5000";
     try {
-      // Must pass user context to AI layer so it knows who to send alerts for
       await fetch(`${aiUrl}/connect/${suffix}?user_id=${userId}`, { method: "POST" });
       setActiveCams([...activeCams, ip]);
       setDiscoveredCams(prev => prev.filter(cam => cam !== ip));
@@ -166,7 +179,7 @@ export default function App() {
     try {
       await fetch(`${aiUrl}/disconnect/${suffix}`, { method: "POST" });
       setActiveCams(prev => prev.filter(cam => cam !== ip));
-      setDiscoveredCams([...discoveredCams, ip]);
+      setDiscoveredCams(prev => [...prev, ip]);
     } catch (e) {
       console.error("Failed to disconnect", e);
     }
@@ -175,24 +188,37 @@ export default function App() {
   const formatDate = (date) => `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   const formatTime = (date) => date.toLocaleTimeString('en-US', { hour12: true });
 
+  // ── Page Routing ─────────────────────────────────────────
   if (currentPage === "landing") {
-    return <LandingPage onLoginClick={() => {
-        setUserId(localStorage.getItem('resq_user_id') || "local_admin_user");
-        setCurrentPage("dashboard");
-    }} />;
+    return <LandingPage onLoginClick={() => setCurrentPage("login")} />;
   }
+
+  if (currentPage === "login") {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onBack={() => setCurrentPage("landing")}
+      />
+    );
+  }
+
   if (currentPage === "history") {
     return <HistoryPage userId={userId} onBack={() => setCurrentPage("dashboard")} />;
   }
+
   if (currentPage === "configure") {
     return <ConfigurationPage userId={userId} onBack={() => setCurrentPage("dashboard")} />;
   }
 
+  // ── Dashboard ────────────────────────────────────────────
   return (
     <div className="h-screen bg-[#0B1120] text-slate-200 flex flex-col font-sans">
       <nav className="px-6 py-4 bg-[#0F172A] border-b border-slate-800 flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-wider text-white">CCTV-SOS-AUTOMATION</h1>
         <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 font-mono mr-2">
+            {userId}
+          </span>
           <button
             onClick={() => setCurrentPage("configure")}
             className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all"
@@ -209,7 +235,7 @@ export default function App() {
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 bg-[#1E293B] hover:bg-[#334155] px-3 py-2 rounded-lg transition-all ml-2"
           >
-            Exit Dashboard
+            <LogOut className="w-4 h-4" /> Logout
           </button>
           <div className="flex items-center gap-2 text-sm text-green-400 font-mono ml-4">
             <ShieldCheck className="w-5 h-5" /> AI Core {systemStatus === "Monitoring Active" ? "Online" : "Offline"}

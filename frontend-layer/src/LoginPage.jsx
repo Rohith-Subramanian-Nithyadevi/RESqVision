@@ -1,25 +1,65 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, ArrowRight } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function LoginPage({ onLoginSuccess, onBack }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
+    setError('');
+
+    if (!username.trim() || !password.trim()) {
       setError("Please fill out all fields.");
       return;
     }
-    
-    // Using simple mock authentication for now. 
-    // Usually, you would hit your backend's /auth/login endpoint here.
-    // For this architecture demo, we just simulate setting the user session.
-    
-    localStorage.setItem('resq_user_id', username);
-    onLoginSuccess(username);
+
+    if (isRegistering && password.length < 4) {
+      setError("Password must be at least 4 characters.");
+      return;
+    }
+
+    if (isRegistering && username.trim().length < 3) {
+      setError("Username must be at least 3 characters.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const endpoint = isRegistering ? "/auth/register" : "/auth/login";
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim()
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Backend returns { detail: "error message" } on failure
+        setError(data.detail || "Authentication failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // Success — store user_id and enter dashboard
+      localStorage.setItem('resq_user_id', data.user_id);
+      onLoginSuccess(data.user_id);
+
+    } catch (err) {
+      setError("Cannot reach the server. Is the backend running?");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,7 +89,7 @@ export default function LoginPage({ onLoginSuccess, onBack }) {
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm mb-4 text-center">
+          <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg text-sm mb-4 text-center">
             {error}
           </div>
         )}
@@ -62,9 +102,11 @@ export default function LoginPage({ onLoginSuccess, onBack }) {
               <input 
                 type="text" 
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => { setUsername(e.target.value); setError(''); }}
                 className="w-full bg-[#111827] border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-slate-600"
                 placeholder="Enter your username"
+                disabled={loading}
+                autoComplete="username"
               />
             </div>
           </div>
@@ -76,25 +118,38 @@ export default function LoginPage({ onLoginSuccess, onBack }) {
               <input 
                 type="password" 
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
                 className="w-full bg-[#111827] border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-slate-600"
                 placeholder="••••••••"
+                disabled={loading}
+                autoComplete={isRegistering ? "new-password" : "current-password"}
               />
             </div>
           </div>
 
           <button 
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 mt-6"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 mt-6"
           >
-            {isRegistering ? "Register" : "Secure Login"} <ArrowRight className="w-4 h-4" />
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {isRegistering ? "Creating Account..." : "Logging in..."}
+              </>
+            ) : (
+              <>
+                {isRegistering ? "Register" : "Secure Login"} <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 
         <div className="mt-6 text-center">
           <button 
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
+            disabled={loading}
+            className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
           >
             {isRegistering ? "Already have an account? Login" : "Need an account? Register"}
           </button>
